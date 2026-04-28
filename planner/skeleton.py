@@ -81,7 +81,15 @@ def _ollama_generate_simple(
         "stream": False,
     }
     resp = _SESSION.post(url, json=payload, timeout=timeout_s or OLLAMA_TIMEOUT_S)
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except Exception:
+        # Redact API key from URL before re-raising to avoid leaking it in tracebacks
+        try:
+            resp.url = re.sub(r"key=[^&\s]+", "key=REDACTED", str(getattr(resp, "url", "")))
+        except Exception:
+            pass
+        raise
     data = resp.json()
     return (data.get("response") or "").strip()
 
@@ -174,10 +182,12 @@ def _gemini_rest_generate_simple(prompt: str, model_id: str, *, timeout_s: Optio
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not set (needed for Gemini REST)")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={api_key}"
+    # Pass the key in a header rather than the URL so it cannot leak via tracebacks/logs
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
     body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {"maxOutputTokens": OLLAMA_NUM_PREDICT}}
-    resp = _SESSION.post(url, json=body, timeout=timeout_s or OLLAMA_TIMEOUT_S)
+    headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
+    resp = _SESSION.post(url, json=body, headers=headers, timeout=timeout_s or OLLAMA_TIMEOUT_S)
     resp.raise_for_status()
     data = resp.json()
     try:
