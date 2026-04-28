@@ -73,9 +73,33 @@ def _normalize_type(rt: Any) -> str:
 
 
 def _decode_body_to_dict(body: Any) -> Optional[Dict[str, Any]]:
-    """Body may be dict/JSON string/bytes; return dict or None."""
+    """Body may be dict/JSON string/bytes/Pydantic-object; return dict or None."""
     if body is None:
         return None
+    # Pydantic v2 (UseTheoriesResults, NodeStatus, etc.) — preferred path on newer isabelle-client
+    if hasattr(body, "model_dump"):
+        try:
+            d = body.model_dump()
+            if isinstance(d, dict):
+                return d
+        except Exception:
+            pass
+    # Pydantic v1 / generic objects
+    if hasattr(body, "dict") and callable(getattr(body, "dict")):
+        try:
+            d = body.dict()
+            if isinstance(d, dict):
+                return d
+        except Exception:
+            pass
+    # Plain dataclass / object with __dict__
+    if hasattr(body, "__dict__") and not isinstance(body, type):
+        try:
+            d = dict(body.__dict__)
+            if d:
+                return d
+        except Exception:
+            pass
     if isinstance(body, (bytes, bytearray)):
         try:
             body = body.decode("utf-8", "replace")

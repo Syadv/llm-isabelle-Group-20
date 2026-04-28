@@ -235,7 +235,20 @@ def main():
         server_info, proc = start_isabelle_server(name="isabelle", log_file="server.log")
         print(server_info.strip())
         isabelle = get_isabelle_client(server_info)
-        session_id = isabelle.session_start(session="HOL")
+        _ss = isabelle.session_start(session="HOL")
+        # isabelle-client returns either a string (older versions) or a list of responses (newer versions)
+        if isinstance(_ss, str):
+            session_id = _ss
+        else:
+            session_id = None
+            for _r in _ss:
+                _body = getattr(_r, 'response_body', None)
+                _sid = getattr(_body, 'session_id', None)
+                if _sid:
+                    session_id = _sid
+                    break
+            if session_id is None:
+                raise RuntimeError(f'Could not extract session_id from session_start response: {_ss}')
         print("session_id:", session_id)
 
         # Mine macros from existing logs (fast; skips if file missing)
