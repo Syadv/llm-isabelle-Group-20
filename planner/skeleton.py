@@ -182,7 +182,7 @@ def _gemini_rest_generate_simple(prompt: str, model_id: str, *, timeout_s: Optio
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not set (needed for Gemini REST)")
-    # Pass the key in a header rather than the URL so it cannot leak via tracebacks/logs
+    # key as header, not query param (otherwise it ends up in error tracebacks)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
     body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {"maxOutputTokens": OLLAMA_NUM_PREDICT}}
