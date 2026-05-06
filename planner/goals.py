@@ -270,10 +270,14 @@ def _extract_print_state_from_responses(resps: List) -> str:
     for resp in (resps or []):
         resp_type = str(getattr(resp, "response_type", "")).upper()
         if resp_type == "NOTE":
-            try:
-                body = json.loads(getattr(resp, "response_body", "") or "{}")
-            except Exception:
-                body = {}
+            raw = getattr(resp, "response_body", "") or "{}"
+            if hasattr(raw, "model_dump"):
+                body = raw.model_dump()
+            else:
+                try:
+                    body = json.loads(raw)
+                except Exception:
+                    body = {}
             if isinstance(body, dict) and body.get("kind") == "writeln":
                 text = str(body.get("message", "") or ""); debug_writeln_count += 1
                 # print(f"[DEBUG writeln #{debug_writeln_count}]: {text[:100]}")

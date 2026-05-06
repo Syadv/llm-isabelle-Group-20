@@ -77,6 +77,8 @@ def _extract_print_state_from_responses(resps: List) -> str:
         if str(getattr(resp, "response_type", "")).upper() != "FINISHED":
             continue
         body = getattr(resp, "response_body", None)
+        if hasattr(body, "model_dump"):
+            body = body.model_dump()
         if isinstance(body, bytes):
             body = body.decode(errors="replace")
         try:
@@ -107,12 +109,20 @@ def _quick_state_and_errors(isabelle, session: str, full_text: str) -> Tuple[str
         
         for r in resps or []:
             raw = getattr(r, "response_body", None)
+            # newer isabelle-client returns pydantic objects, not dicts
+            if hasattr(raw, "model_dump"):
+                raw = raw.model_dump()
             if isinstance(raw, (bytes, bytearray)):
                 raw = raw.decode(errors="replace")
-            
+
             # Try structured JSON first
             try:
-                data = json.loads(raw) if isinstance(raw, str) and raw.strip() else None
+                if isinstance(raw, dict):
+                    data = raw
+                elif isinstance(raw, str) and raw.strip():
+                    data = json.loads(raw)
+                else:
+                    data = None
                 if isinstance(data, dict):
                     for node in data.get("nodes", []):
                         for msg in node.get("messages", []):
@@ -410,6 +420,8 @@ end
         full_output: List[str] = []
         for r in resps or []:
             body = getattr(r, "response_body", None)
+            if hasattr(body, "model_dump"):
+                body = body.model_dump()
             if isinstance(body, (bytes, bytearray)):
                 body = body.decode(errors="replace")
             elif body is None:

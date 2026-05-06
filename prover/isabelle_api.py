@@ -33,6 +33,24 @@ _use_timeouts = 0
 _last_call_timed_out = False
 
 
+
+def session_start_id(isabelle, session: str = "HOL") -> str:
+    """Start an isabelle session and return the session_id string.
+
+    Newer isabelle-client returns a list of response objects from session_start
+    rather than a string; this helper walks the list and pulls the actual id.
+    """
+    result = isabelle.session_start(session=session)
+    if isinstance(result, str):
+        return result
+    for r in result:
+        body = getattr(r, "response_body", None)
+        sid = getattr(body, "session_id", None)
+        if sid:
+            return sid
+    raise RuntimeError(f"Could not extract session_id from session_start response: {result}")
+
+
 def _header(imports: Optional[List[str]] = None) -> str:
     imps = ["Main"] + list(imports or []) + list(EXTRA_IMPORTS or [])
     return f"theory Scratch\nimports {' '.join(imps)}\nbegin\n"
