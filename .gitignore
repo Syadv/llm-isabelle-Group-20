@@ -6,3 +6,4 @@ server.log
 .DS_Store
 logs/*.log.jsonl
 tmp/
+datasets/planner_results/
