@@ -130,7 +130,8 @@ def prove_goal(isabelle, session_id: str, goal: str, model_name_or_ensemble: str
                macro_map: Optional[Dict[str, List[Tuple[str, int]]]] = None,
                enable_reranker: bool = True,
                *,
-               initial_state_hint: Optional[str] = None  # <-- NEW (optional, backward-compatible)
+               initial_state_hint: Optional[str] = None,  # <-- NEW (optional, backward-compatible)
+               cex_hints: Optional[str] = None  # <-- NEW: formatted nitpick/quickcheck hints from planner
                ) -> Dict[str, Any]:
 
     budget = timeout if timeout is not None else 10
@@ -190,6 +191,9 @@ def prove_goal(isabelle, session_id: str, goal: str, model_name_or_ensemble: str
     seed_steps = [f'lemma "{goal}"']
     # Seed the first beam with an optional initial state hint (used by planner after print_state)
     seed_hint = (initial_state_hint or "").strip()
+    if cex_hints:
+        ce_str = cex_hints.strip()
+        seed_hint = (seed_hint + chr(10) + chr(10) + ce_str) if seed_hint else ce_str
     beam: List[Tuple[int, List[str], str, Optional[int]]] = [(9999, seed_steps, seed_hint, None)]
     visited_by_depth = defaultdict(set)
 

@@ -118,8 +118,6 @@ def _fill_one_hole(isabelle, session: str, full_text: str, hole_span: Tuple[int,
         if trace and cex_block:
             print("[fill] cex-hints (LLM input):" + chr(10) + cex_block)
 
-    seed_hint = state_block + (chr(10) + chr(10) + cex_block if cex_block else "")
-
     res = prove_goal(
         isabelle, session, eff_goal, model_name_or_ensemble=model,
         beam_w=3, max_depth=6, hint_lemmas=6, timeout=per_hole_timeout,
@@ -128,7 +126,7 @@ def _fill_one_hole(isabelle, session: str, full_text: str, hole_span: Tuple[int,
         qc_timeout=2, qc_every=1, use_np=False, np_timeout=5, np_every=2,
         facts_limit=8, do_minimize=False, minimize_timeout=8,
         do_variants=False, variant_timeout=6, variant_tries=24,
-        enable_reranker=True, initial_state_hint=seed_hint,
+        enable_reranker=True, initial_state_hint=state_block, cex_hints=cex_block,
     )
     
     steps = [str(s) for s in res.get("steps", [])]
