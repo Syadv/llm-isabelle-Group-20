@@ -20,6 +20,7 @@ from prover.isabelle_api import (
 )
 from prover.prover import prove_goal
 from planner.goals import _print_state_before_hole, _log_state_block, _effective_goal_from_state, _first_lemma_line, _extract_goal_from_lemma_line, _cleanup_resources, _verify_full_proof, _run_theory_with_timeout
+from planner.repair_inputs import get_counterexample_hints_for_repair
 
 def _hole_fingerprint(full_text: str, span: tuple[int, int], context: int = 80) -> str:
     """Stable key for a hole: hash a small window around the 'sorry'."""
@@ -34,6 +35,30 @@ _INLINE_BY_TAIL = re.compile(r"\s+by\s+.+$")
 _BARE_DOT = re.compile(r"(?m)^\s*\.\s*$")
 _HEAD_CMD_RE = re.compile(r"^\s*(have|show|obtain)\b")  # local copy to avoid new imports
 _ISA_VERIFY_TIMEOUT_S = int(os.getenv("ISABELLE_VERIFY_TIMEOUT_S", "30"))
+
+# CEX hint forwarding (Fill): set FILL_CEX_HINTS=0 to disable for A/B benchmarking
+_FILL_CEX_HINTS_ON = os.getenv("FILL_CEX_HINTS", "1").strip() not in ("0", "false", "False", "")
+_FILL_CEX_MIN_BUDGET_S = int(os.getenv("FILL_CEX_MIN_BUDGET_S", "10"))
+
+
+def _format_cex_hints_for_fill(ce: dict) -> str:
+    """Render counterexample hints as a compact prompt-friendly block.
+    Returns empty string when no useful hints are available."""
+    if not isinstance(ce, dict):
+        return ""
+    bindings = [b for b in ce.get("bindings", []) if isinstance(b, str) and b.strip()]
+    defs = [d for d in ce.get("def_hints", []) if isinstance(d, str) and d.strip()]
+    if not bindings and not defs:
+        return ""
+    parts = ["Counterexample analysis (nitpick/quickcheck):"]
+    if bindings:
+        parts.append("  Falsifying bindings:")
+        parts.extend(f"    {b}" for b in bindings[:8])
+    if defs:
+        parts.append("  Candidate definition unfoldings:")
+        parts.extend(f"    {d}" for d in defs[:8])
+    return chr(10).join(parts)
+
 
 @dataclass(slots=True)
 class PlanAndFillResult:
@@ -76,6 +101,25 @@ def _fill_one_hole(isabelle, session: str, full_text: str, hole_span: Tuple[int,
     #     #     print(f"[fill] Original goal: {orig_goal}")
     #     print(f"[fill] Effective goal: {eff_goal}")
     
+    cex_block = ""
+    if trace:
+        print(f"[fill] cex-decision: hints_on={_FILL_CEX_HINTS_ON} per_hole_timeout={per_hole_timeout} min_budget={_FILL_CEX_MIN_BUDGET_S}")
+    if _FILL_CEX_HINTS_ON and per_hole_timeout >= _FILL_CEX_MIN_BUDGET_S:
+        cex_timeout_s = max(4, min(10, per_hole_timeout // 6))
+        try:
+            ce = get_counterexample_hints_for_repair(
+                isabelle, session, state_block, timeout_s=cex_timeout_s
+            )
+            cex_block = _format_cex_hints_for_fill(ce)
+        except Exception as ex:
+            if trace:
+                print(f"[fill] cex-hint collection skipped: {type(ex).__name__}: {ex}")
+            cex_block = ""
+        if trace and cex_block:
+            print("[fill] cex-hints (LLM input):" + chr(10) + cex_block)
+
+    seed_hint = state_block + (chr(10) + chr(10) + cex_block if cex_block else "")
+
     res = prove_goal(
         isabelle, session, eff_goal, model_name_or_ensemble=model,
         beam_w=3, max_depth=6, hint_lemmas=6, timeout=per_hole_timeout,
@@ -84,7 +128,7 @@ def _fill_one_hole(isabelle, session: str, full_text: str, hole_span: Tuple[int,
         qc_timeout=2, qc_every=1, use_np=False, np_timeout=5, np_every=2,
         facts_limit=8, do_minimize=False, minimize_timeout=8,
         do_variants=False, variant_timeout=6, variant_tries=24,
-        enable_reranker=True, initial_state_hint=state_block,
+        enable_reranker=True, initial_state_hint=seed_hint,
     )
     
     steps = [str(s) for s in res.get("steps", [])]
