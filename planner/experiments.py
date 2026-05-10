@@ -30,6 +30,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import asyncio, atexit, gc
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeout
 from asyncio.base_subprocess import BaseSubprocessTransport as _BST
 
 # Planner + Isabelle
@@ -350,8 +351,17 @@ def _safe_plan_and_fill(*, goal: str, model: Optional[str], cfg) -> Tuple[Option
     Run planner.plan_and_fill and trap any provider/network exceptions.
     Returns (res, err_text). When res is None, the caller should mark failure but continue the run.
     """
-    try:             
-        res = plan_and_fill(
+    # Hard wall-clock ceiling per goal: cap = cfg.timeout * multiplier (env override).
+    # This prevents per-goal time leaks when internal subprocess calls or repair
+    # loops run past the soft budget (observed: 1274s/1297s on individual goals).
+    try:
+        cap_mult = float(os.getenv("BENCH_HARD_TIMEOUT_MULT", "1.5"))
+    except Exception:
+        cap_mult = 1.5
+    hard_cap_s = max(int(cfg.timeout * cap_mult), int(cfg.timeout) + 10)
+
+    def _do_call():
+        return plan_and_fill(
             goal,
             model=model,
             timeout=cfg.timeout,
@@ -368,7 +378,16 @@ def _safe_plan_and_fill(*, goal: str, model: Optional[str], cfg) -> Tuple[Option
             alpha=cfg.alpha, beta=cfg.beta, gamma=cfg.gamma,
             hintlex_path=cfg.hintlex, hintlex_top=cfg.hintlex_top,
         )
-        return res, ""
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(_do_call)
+            try:
+                res = fut.result(timeout=hard_cap_s)
+                return res, ""
+            except _FuturesTimeout:
+                # Best-effort: don't wait on cleanup, the daemon thread will die with the worker.
+                return None, f"hard_wallclock_timeout: cap={hard_cap_s}s (cfg.timeout={cfg.timeout}s)"
     except Exception as e:
         tb = "".join(traceback.format_exception_only(type(e), e)).strip()
         return None, tb
