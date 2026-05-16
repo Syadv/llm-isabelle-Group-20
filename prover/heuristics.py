@@ -5,7 +5,7 @@ import os
 import re
 from typing import List, Optional, Dict, Tuple
 
-from .features import STEP_TYPES
+from .features import STEP_TYPES, goal_op_density, tactic_repeat
 from .premises import cand_features
 
 # Reranker controls (kept identical)
@@ -52,7 +52,10 @@ def live_features_for(cmd: str, goal: str, state_hint: str, depth: int) -> list[
     one_hot = [0] * len(STEP_TYPES)
     if idx is not None:
         one_hot[idx] = 1
-    return base + one_hot + [len(cmd or "")]
+    repeat = tactic_repeat(cmd, [])
+    op_density = goal_op_density(goal or "")
+    goal_length = len(goal or "")
+    return base + one_hot + [len(cmd or ""), goal_length, op_density, repeat, 0.0]
 
 from typing import Optional  # re-affirm for older type checkers
 

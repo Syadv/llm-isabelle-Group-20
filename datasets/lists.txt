@@ -16,3 +16,4 @@ x ∈ set ys ⟹ x ∈ set (xs @ ys)
 distinct xs ⟹ distinct (rev xs)
 filter p (xs @ ys) = filter p xs @ filter p ys
 map f (filter p xs) = filter (λx. p x) (map f xs)
+lemma test_sheldon: "x + 0 = (x::nat)"
