@@ -1,0 +1,176 @@
+{
+  "_meta": {
+    "comment": "Token -> [hint lemma names] mapping for the planner's micro-RAG (skeleton._load_hintlex). Hand-curated from the standard Isabelle/HOL library (Main.thy, List.thy, Set.thy, Nat.thy) and tuned to the token vocabulary of the lists / nat / sets / logic benchmark suites. Format: each value is a list of lemma names the LLM should consider when the corresponding token appears in the goal. The 'count' format {token: [[hint,count],...]} is also accepted by the loader; we use the simpler {token: [hint,...]} form.",
+    "source": "Hand-curated by Group 20 from standard Isabelle/HOL library lemmas; future work would derive automatically from AFP proof traces.",
+    "version": "1.0"
+  },
+
+  "rev": [
+    "rev_rev_ident", "rev_append", "rev_map", "length_rev", "rev_swap",
+    "rev_eq_Cons_iff", "rev_singleton_conv"
+  ],
+
+  "append": [
+    "append_assoc", "append_Nil", "append_Nil2", "self_append_conv",
+    "append_eq_append_conv", "append_self_conv"
+  ],
+
+  "map": [
+    "map_id", "map_map", "map_append", "map_rev", "length_map",
+    "map_eq_Cons_iff", "list.map_id0", "list.map_comp"
+  ],
+
+  "length": [
+    "length_append", "length_rev", "length_map", "length_Cons",
+    "length_Nil", "length_tl", "length_take", "length_drop"
+  ],
+
+  "take": [
+    "append_take_drop_id", "take_append", "take_all", "take_0",
+    "length_take", "take_Suc_Cons"
+  ],
+
+  "drop": [
+    "append_take_drop_id", "drop_append", "drop_all", "drop_0",
+    "length_drop", "drop_Suc_Cons"
+  ],
+
+  "filter": [
+    "filter_append", "filter_filter", "length_filter_le",
+    "filter_id_conv", "filter_True", "filter_False"
+  ],
+
+  "distinct": [
+    "distinct_rev", "distinct_append", "distinct_map",
+    "distinct_filter", "distinct.simps"
+  ],
+
+  "set": [
+    "set_append", "set_rev", "set_map", "set_filter",
+    "set_empty", "in_set_conv_decomp"
+  ],
+
+  "xs": [
+    "list.induct", "neq_Nil_conv", "list.exhaust"
+  ],
+  "ys": [
+    "list.induct", "neq_Nil_conv"
+  ],
+  "zs": [
+    "list.induct"
+  ],
+
+  "Nil": [
+    "list.cases", "list.distinct", "Nil_is_append_conv"
+  ],
+  "Cons": [
+    "list.cases", "list.distinct", "list.inject"
+  ],
+
+  "Suc": [
+    "Suc_eq_plus1", "Suc_neq_Zero", "Suc_inject", "nat.exhaust",
+    "nat_induct", "Suc_pred", "plus_Suc_right"
+  ],
+
+  "n": [
+    "nat.induct", "nat.cases"
+  ],
+  "m": [
+    "nat.induct", "nat.cases"
+  ],
+  "k": [
+    "nat.induct"
+  ],
+
+  "plus": [
+    "add.commute", "add.assoc", "add.left_commute", "add_0", "add_Suc"
+  ],
+  "minus": [
+    "diff_diff_left", "diff_add_inverse", "diff_0_eq_0"
+  ],
+
+  "min": [
+    "min.idem", "min.commute", "min.assoc", "min_def"
+  ],
+  "max": [
+    "max.idem", "max.commute", "max.assoc", "max_def"
+  ],
+
+  "less": [
+    "less_trans", "less_irrefl", "less_imp_le", "linorder_less_linear"
+  ],
+  "le": [
+    "le_refl", "le_trans", "le_antisym", "linorder_linear"
+  ],
+
+  "insert": [
+    "insert_iff", "insert_commute", "insert_absorb", "insert_is_Un",
+    "insert_subset"
+  ],
+
+  "union": [
+    "Un_commute", "Un_assoc", "Un_idem", "Un_empty_left", "Un_empty_right",
+    "Un_Int_distrib", "Un_subset_iff"
+  ],
+
+  "intersection": [
+    "Int_commute", "Int_assoc", "Int_idem", "Int_empty_left", "Int_empty_right",
+    "Int_Un_distrib", "Int_subset_iff", "Int_lower1", "Int_lower2"
+  ],
+
+  "subset": [
+    "subset_refl", "subset_trans", "subset_antisym", "Un_upper1", "Un_upper2",
+    "Int_lower1", "Int_lower2"
+  ],
+
+  "A": [
+    "subset_refl", "Un_commute"
+  ],
+  "B": [
+    "subset_refl", "Un_commute"
+  ],
+  "C": [
+    "subset_refl"
+  ],
+
+  "True": [
+    "HOL.True_def", "True_def", "True_implies_equals"
+  ],
+  "False": [
+    "HOL.False_def", "False_def", "FalseE"
+  ],
+
+  "implies": [
+    "imp_refl", "imp_disjL", "imp_conjL", "mp", "impI"
+  ],
+  "iff": [
+    "iff_refl", "iff_sym", "iff_trans", "iffI", "iffD1", "iffD2"
+  ],
+
+  "conj": [
+    "conj_commute", "conj_assoc", "conjI", "conjE", "conj_absorb"
+  ],
+  "disj": [
+    "disj_commute", "disj_assoc", "disjI1", "disjI2", "disjE", "disj_absorb"
+  ],
+  "not": [
+    "not_not", "notI", "notE", "iff_not_swap"
+  ],
+
+  "id": [
+    "id_def", "id_apply", "map_id", "comp_id"
+  ],
+
+  "p": [
+    "filter_True", "filter_False"
+  ],
+  "f": [
+    "map_id", "map_map", "comp_def"
+  ],
+  "x": [
+    "list.induct", "insert_iff"
+  ],
+  "y": [
+    "insert_iff"
+  ]
+}
