@@ -300,3 +300,26 @@ def cand_features(fact_names: List[str], score_map: Dict[str, Tuple[float, float
         "cand_hit_topk": hit,
         "cand_n_facts": float(len(fact_names)),
     }
+
+def load_hol_theories(index, isabelle_home):
+    # load the core HOL theory files into the premises index
+    # so it has real lemmas to search through
+    from prover.context import ContextWindow
+    import os
+
+    thy_dir = os.path.join(isabelle_home, "src", "HOL")
+    core_theories = ["List.thy", "Nat.thy", "Set.thy", "Fun.thy"]
+
+    cw = ContextWindow()
+    total = 0
+    for thy in core_theories:
+        path = os.path.join(thy_dir, thy)
+        if not os.path.exists(path):
+            continue
+        facts = cw.ingest_theory(path)
+        for f in facts:
+            index.add(f.fact_id, f.text)
+        total = total + len(facts)
+
+    index.finalize()
+    return total
