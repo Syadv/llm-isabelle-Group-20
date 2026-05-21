@@ -512,35 +512,6 @@ def plan_and_fill(goal: str, model: Optional[str] = None, timeout: int = 100, *,
         isa, session, proc = isa2, session2, proc2
 
     try:
-        # ===== Fast-path: try direct single-tactic close before outline generation =====
-        # If a goal is closable by `simp` or `auto` on its own, structured outline + Fill is overkill.
-        # Costs <2s per tactic; saves the entire outline+Fill+Repair pipeline on trivial goals.
-        FAST_PATH_TACTICS = ("by simp", "by auto", "by (simp add: algebra_simps)", "by blast")
-        if mode in ("auto", "fill") and left_s() > 5:
-            for tac in FAST_PATH_TACTICS:
-                if left_s() < 3:
-                    break
-                candidate = f'lemma "{goal}" {tac}'
-                try:
-                    _state, errs = _quick_state_and_errors(isa, session, candidate, timeout_s=int(min(left_s(), 15)))
-                    # _quick_state_and_errors has a substring-based filter that false-positives
-                    # on "errors":[] / "failed":0 in successful JSON responses. Do our own check:
-                    raw = " ".join(errs)
-                    ok_markers = ('"ok":true' in raw) and ('"errors":[]' in raw) and ('"failed":0' in raw)
-                    real_errors = any(
-                        ('"errors":[' in e and '"errors":[]' not in e)
-                        or '"failed":' in e and '"failed":0' not in e
-                        for e in errs
-                    )
-                    closed = ok_markers and not real_errors
-                    if closed:
-                        if trace:
-                            print(f"[planner] fast-path closed by '{tac}'")
-                        return PlanAndFillResult(True, candidate, [], [])
-                except Exception:
-                    # Any error in the fast-path falls through to the normal pipeline
-                    continue
-
         # Generate outline
         if legacy_single_outline:
             full = propose_isar_skeleton(goal, model=model, temp=0.35, force_outline=(mode == "outline")).text
