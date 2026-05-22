@@ -20,7 +20,6 @@ from prover.isabelle_api import (
 )
 from prover.prover import prove_goal
 from planner.goals import _print_state_before_hole, _log_state_block, _effective_goal_from_state, _first_lemma_line, _extract_goal_from_lemma_line, _cleanup_resources, _verify_full_proof, _run_theory_with_timeout
-from prover.isabelle_api import finished_ok as _finished_ok_oracle
 from planner.repair_inputs import get_counterexample_hints_for_repair
 
 def _hole_fingerprint(full_text: str, span: tuple[int, int], context: int = 80) -> str:
@@ -59,42 +58,6 @@ def _format_cex_hints_for_fill(ce: dict) -> str:
         parts.append("  Candidate definition unfoldings:")
         parts.extend(f"    {d}" for d in defs[:8])
     return chr(10).join(parts)
-
-
-def _try_fast_path(isabelle, session, goal: str,
-                   per_tactic_timeout_s: int = 5,
-                   trace: bool = False) -> tuple:
-    """Try library one-liners on the bare goal using the authoritative finished_ok oracle.
-
-    Returns (closed: bool, finisher: str | None). On any error or timeout, returns (False, None).
-    Uses end_with=None and add_print_state=False so finished_ok reflects proof closure
-    (not just theory parse success).
-    """
-    FAST_PATH_TACTICS = (
-        "by simp",
-        "by auto",
-        "by blast",
-        "by (simp add: algebra_simps)",
-        "by fastforce",
-        "by arith",
-    )
-    for fin in FAST_PATH_TACTICS:
-        try:
-            thy = build_theory(
-                [f'lemma "{goal}"', fin],
-                add_print_state=False,
-                end_with=None,
-            )
-            resps = _run_theory_with_timeout(isabelle, session, thy, timeout_s=per_tactic_timeout_s)
-            ok, _info = _finished_ok_oracle(resps)
-            if ok:
-                if trace:
-                    print(f"[planner] fast-path closed by '{fin}'", flush=True)
-                return True, fin
-        except Exception:
-            # Any error in the fast-path falls through to the next tactic
-            continue
-    return False, None
 
 
 @dataclass(slots=True)
@@ -549,20 +512,6 @@ def plan_and_fill(goal: str, model: Optional[str] = None, timeout: int = 100, *,
         isa, session, proc = isa2, session2, proc2
 
     try:
-        # ===== Fast-path: try library one-liners before LLM outline pipeline =====
-        # Uses finished_ok authoritative oracle (same as the rest of the codebase),
-        # not the substring-scan in _quick_state_and_errors. Falls through cleanly
-        # on negative / undecidable goals.
-        if os.environ.get("PLANNER_FAST_PATH", "1") == "1" and mode in ("auto", "fill") and left_s() > 5:
-            _fast_ok, _fast_fin = _try_fast_path(
-                isa, session, goal,
-                per_tactic_timeout_s=int(min(left_s(), 8)),
-                trace=trace,
-            )
-            if _fast_ok:
-                outline = f'lemma "{goal}"\n  {_fast_fin}\n'
-                return PlanAndFillResult(True, outline, [], [])
-
         # Generate outline
         if legacy_single_outline:
             full = propose_isar_skeleton(goal, model=model, temp=0.35, force_outline=(mode == "outline")).text
