@@ -45,6 +45,8 @@ from prover.isabelle_api import (
     session_start_id,
 )
 from prover import config as CFG  # NEW: live switches for premise/context
+
+_ISA_VERIFY_TIMEOUT_S = int(__import__("os").getenv("ISABELLE_VERIFY_TIMEOUT_S", "30"))
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 def _drain_and_close_loop(loop: asyncio.AbstractEventLoop | None) -> None:
@@ -216,72 +218,29 @@ def _responses_to_text(resps) -> str:
     return "\n".join(chunks)
 
 def _verify_full_isar(isabelle, session_id: str, isar_text: str) -> Tuple[bool, str]:
-    """
-    Compile a full Isar theory and return (ok, brief_diag).
-    This is a completely new implementation that properly parses Isabelle's JSON responses
-    to avoid the false positives of previous versions.
+    """Compile a full Isar theory and return (ok, brief_diag).
+    Delegates to the canonical finished_ok oracle from prover.isabelle_api, which
+    handles isabelle-client response shape variations (Pydantic / bytes / str / dict)
+    correctly. The previous body-string-scan implementation produced false negatives
+    on simple proofs like 'lemma X by simp' because response_body is not always str/bytes.
     """
     try:
-        # Step 1: Prepare and run the theory, assuming isar_text is a complete file.
         theory_lines = _normalize_isar_for_verify(isar_text).splitlines()
         if not theory_lines:
             return False, "Empty proof provided."
-            
         thy = build_theory(theory_lines, add_print_state=False, end_with=None)
-        resps = run_theory(isabelle, session_id, thy)
-
-        # Step 2: Intelligently parse responses instead of naive string matching.
-        # We look for the final summary message from Isabelle.
-        final_summary = None
-        all_errors = []
-        for r in reversed(resps or []):
-            body = getattr(r, "response_body", None)
-            if not isinstance(body, (str, bytes)):
-                continue
-            
-            text_body = body.decode(errors="replace") if isinstance(body, bytes) else body
-            try:
-                # A summary will be a JSON object with "ok" and "errors" keys.
-                data = json.loads(text_body)
-                if isinstance(data, dict):
-                    if "ok" in data and "errors" in data:
-                        final_summary = data
-                        break # We found the main summary.
-                    # Also collect individual error messages.
-                    if data.get("kind") == "error" and "message" in data:
-                        all_errors.append(data["message"])
-
-            except json.JSONDecodeError:
-                continue # This response was not a valid JSON object.
-
-        # Step 3: Make a final decision based on the parsed summary.
-        if final_summary:
-            is_ok = final_summary.get("ok", False)
-            errors_list = final_summary.get("errors", [])
-            if is_ok and not errors_list:
-                return True, ""  # Definitive success.
-            else:
-                # Definitive failure. Format the error message.
-                error_msgs = [e.get("message", "Unknown error") for e in errors_list]
-                diag = "Isabelle reported failure:\n" + "\n".join(error_msgs)
-                return False, diag
-
-        # Step 4: Fallback if no JSON summary was found (e.g., older Isabelle version).
-        # Check for legacy error markers.
-        all_txt = _responses_to_text(resps)
-        if any(e in all_txt for e in ("*** Error:", "*** Outer syntax error", "*** Failed")):
-             return False, f"[Legacy error detected]\n{all_txt[-1000:]}"
-        
-        # If no errors were found, and we saw signs of completion, assume success.
-        if "100%" in all_txt or "theory processed" in all_txt:
-            return True, ""
-
-        # If all else fails, we have to assume failure.
-        diag = "Verification inconclusive. No summary found."
-        if all_errors:
-            diag += "\nDetected errors:\n" + "\n".join(all_errors)
-        return False, diag
-
+        resps = run_theory(isabelle, session_id, thy, timeout_s=_ISA_VERIFY_TIMEOUT_S)
+        ok, info = finished_ok(resps)
+        if ok:
+            return True, "ok"
+        errs = info.get("errors") or []
+        if errs:
+            first = errs[0]
+            msg = first.get("message", str(first)) if isinstance(first, dict) else str(first)
+            return False, f"errors: {msg[:200]}"
+        if info.get("timeout"):
+            return False, "verify timeout"
+        return False, "not closed (no ok flag)"
     except Exception as e:
         return False, f"verify_error: {type(e).__name__}: {e}"
 
