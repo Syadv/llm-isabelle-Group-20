@@ -78,23 +78,45 @@ def _try_fast_path(isabelle, session, goal: str,
         "by fastforce",
         "by arith",
     )
-    for fin in FAST_PATH_TACTICS:
-        try:
-            thy = build_theory(
-                [f'lemma "{goal}"', fin],
-                add_print_state=False,
-                end_with=None,
-            )
-            resps = _run_theory_with_timeout(isabelle, session, thy, timeout_s=per_tactic_timeout_s)
-            ok, _info = _finished_ok_oracle(resps)
-            if ok:
-                if trace:
-                    print(f"[planner] fast-path closed by '{fin}'", flush=True)
-                return True, fin
-        except Exception:
-            # Any error in the fast-path falls through to the next tactic
-            continue
-    return False, None
+    # If the goal contains a bare numeric literal (0, 1, ...) on a variable,
+    # Isabelle's type inference may leave the type ambiguous and `by simp` fails
+    # for absence of a concrete simp rule. Try the original goal first, then
+    # type-ascribed variants for common numeric domains.
+    def _generate_goal_variants(g: str) -> list:
+        variants = [g]
+        if re.search(r"\b\d+\b", g) and "::" not in g:
+            for tau in ("nat", "int"):
+                m = re.search(r"\b([a-z][a-zA-Z0-9_]*)\b", g)
+                if m and m.group(1) not in {"by", "lemma", "shows", "proof", "qed",
+                                            "have", "show", "fix", "assume", "thus",
+                                            "where", "let", "if", "then", "else", "in"}:
+                    var = m.group(1)
+                    ascribed = g.replace(var, f"({var}::{tau})", 1)
+                    if ascribed != g:
+                        variants.append(ascribed)
+        return variants
+
+    for variant_goal in _generate_goal_variants(goal):
+        for fin in FAST_PATH_TACTICS:
+            try:
+                thy = build_theory(
+                    [f'lemma "{variant_goal}"', fin],
+                    add_print_state=False,
+                    end_with=None,
+                )
+                resps = _run_theory_with_timeout(isabelle, session, thy, timeout_s=per_tactic_timeout_s)
+                ok, _info = _finished_ok_oracle(resps)
+                if ok:
+                    if trace:
+                        if variant_goal != goal:
+                            print(f"[planner] fast-path closed by '{fin}' (variant: {variant_goal})", flush=True)
+                        else:
+                            print(f"[planner] fast-path closed by '{fin}'", flush=True)
+                    return True, fin, variant_goal
+            except Exception:
+                # Any error in the fast-path falls through to the next tactic
+                continue
+    return False, None, None
 
 
 @dataclass(slots=True)
@@ -554,13 +576,16 @@ def plan_and_fill(goal: str, model: Optional[str] = None, timeout: int = 100, *,
         # not the substring-scan in _quick_state_and_errors. Falls through cleanly
         # on negative / undecidable goals.
         if os.environ.get("PLANNER_FAST_PATH", "1") == "1" and mode in ("auto", "fill") and left_s() > 5:
-            _fast_ok, _fast_fin = _try_fast_path(
+            _fast_ok, _fast_fin, _fast_goal = _try_fast_path(
                 isa, session, goal,
                 per_tactic_timeout_s=int(min(left_s(), 8)),
                 trace=trace,
             )
             if _fast_ok:
-                outline = f'lemma "{goal}"\n  {_fast_fin}\n'
+                # Use the (possibly type-ascribed) goal variant that actually closed,
+                # so the verifier sees an outline that matches what the fast-path proved.
+                _outline_goal = _fast_goal if _fast_goal else goal
+                outline = f'lemma "{_outline_goal}"\n  {_fast_fin}\n'
                 return PlanAndFillResult(True, outline, [], [])
 
         # Generate outline
